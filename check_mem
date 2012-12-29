@@ -34,7 +34,7 @@ use Getopt::Std;
 # Predefined exit codes for Nagios
 use vars qw($opt_c $opt_f $opt_u $opt_w $opt_C $opt_v %exit_codes);
 %exit_codes   = ('UNKNOWN' ,-1,
-        		 'OK'      , 0,
+                 'OK'      , 0,
                  'WARNING' , 1,
                  'CRITICAL', 2,
                  );
@@ -62,13 +62,13 @@ tell_nagios($used_memory_kb,$free_memory_kb,$caches_kb);
 
 sub tell_nagios {
     my ($used,$free,$caches) = @_;
-    
+
     # Calculate Total Memory
     my $total = $free + $used;
     print "$total Total\n" if ($opt_v);
 
     my $perfdata = "|TOTAL=${total}KB;;;; USED=${used}KB;;;; FREE=${free}KB;;;; CACHES=${caches}KB;;;;";
-    
+
     if ($opt_f) {
       my $percent    = sprintf "%.1f", ($free / $total * 100);
       if ($percent <= $opt_c) {
@@ -97,20 +97,20 @@ sub tell_nagios {
 
 # Show usage
 sub usage() {
-  print "\ncheck_mem.pl v1.0 - Nagios Plugin\n\n";
-  print "usage:\n";
-  print " check_mem.pl -<f|u> -w <warnlevel> -c <critlevel>\n\n";
-  print "options:\n";
-  print " -f           Check FREE memory\n";
-  print " -u           Check USED memory\n";
-  print " -C           Count OS caches as FREE memory\n";
-  print " -w PERCENT   Percent free/used when to warn\n";
-  print " -c PERCENT   Percent free/used when critical\n";
-  print "\nCopyright (C) 2000 Dan Larsson <dl\@tyfon.net>\n";
-  print "check_mem.pl comes with absolutely NO WARRANTY either implied or explicit\n";
-  print "This program is licensed under the terms of the\n";
-  print "MIT License (check source code for details)\n";
-  exit $exit_codes{'UNKNOWN'}; 
+    print "\ncheck_mem.pl v1.0 - nagios plugin\n\n";
+    print "usage:\n";
+    print " check_mem.pl -<f|u> -w <warnlevel> -c <critlevel>\n\n";
+    print "options:\n";
+    print " -f           check free memory\n";
+    print " -u           check used memory\n";
+    print " -c           count os caches as free memory\n";
+    print " -w percent   percent free/used when to warn\n";
+    print " -c percent   percent free/used when critical\n";
+    print "\ncopyright (c) 2000 dan larsson <dl\@tyfon.net>\n";
+    print "check_mem.pl comes with absolutely no warranty either implied or explicit\n";
+    print "this program is licensed under the terms of the\n";
+    print "mit license (check source code for details)\n";
+    exit $exit_codes{'UNKNOWN'}; 
 }
 
 sub get_memory_info {
@@ -170,7 +170,6 @@ sub get_memory_info {
                 }
             }
             $used_memory_kb = $total_memory_kb - $free_memory_kb;
-            
         }
         else { # We have kstat
             my $kstat = Sun::Solaris::Kstat->new();
@@ -187,7 +186,7 @@ sub get_memory_info {
                  : 0;
             $caches_kb += $arc_size;
             my $pagesize = `pagesize`;
-    
+
             $total_memory_kb = $phys_pages * $pagesize / 1024;
             $free_memory_kb = $free_pages * $pagesize / 1024;
             $used_memory_kb = $total_memory_kb - $free_memory_kb;
@@ -217,10 +216,10 @@ sub get_memory_info {
             print "You can't report on $uname caches!\n";
             exit $exit_codes{UNKNOWN};
         }
-    	my $command_line = `vmstat | tail -1 | awk '{print \$4,\$5}'`;
-    	chomp $command_line;
+        my $command_line = `vmstat | tail -1 | awk '{print \$4,\$5}'`;
+        chomp $command_line;
         my @memlist      = split(/ /, $command_line);
-    
+
         # Define the calculating scalars
         $used_memory_kb  = $memlist[0]/1024;
         $free_memory_kb = $memlist[1]/1024;
@@ -232,30 +231,30 @@ sub get_memory_info {
 sub init {
     # Get the options
     if ($#ARGV le 0) {
-      &usage;
+        &usage;
     }
     else {
-      getopts('c:fuCvw:');
+        getopts('c:fuCvw:');
     }
-    
+
     # Shortcircuit the switches
     if (!$opt_w or $opt_w == 0 or !$opt_c or $opt_c == 0) {
-      print "*** You must define WARN and CRITICAL levels!\n";
-      &usage;
+        print "*** You must define WARN and CRITICAL levels!\n";
+        &usage;
     }
     elsif (!$opt_f and !$opt_u) {
-      print "*** You must select to monitor either USED or FREE memory!\n";
-      &usage;
+        print "*** You must select to monitor either USED or FREE memory!\n";
+        &usage;
     }
-    
+
     # Check if levels are sane
     if ($opt_w <= $opt_c and $opt_f) {
-      print "*** WARN level must not be less than CRITICAL when checking FREE memory!\n";
+        print "*** WARN level must not be less than CRITICAL when checking FREE memory!\n";
       &usage;
     }
     elsif ($opt_w >= $opt_c and $opt_u) {
-      print "*** WARN level must not be greater than CRITICAL when checking USED memory!\n";
-      &usage;
+        print "*** WARN level must not be greater than CRITICAL when checking USED memory!\n";
+        &usage;
     }
 }
 
