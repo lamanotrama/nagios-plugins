@@ -132,22 +132,15 @@ sub get_memory_info {
     print "uname returns $uname" if ($opt_v);
     if ( $uname =~ /Linux/ ) {
         my @meminfo = `/bin/cat /proc/meminfo`;
-        foreach (@meminfo) {
-            chomp;
-            if (/^Mem(Total|Free):\s+(\d+) kB/) {
-                my $counter_name = $1;
-                if ($counter_name eq 'Free') {
-                    $free_memory_kb = $2;
-                }
-                elsif ($counter_name eq 'Total') {
-                    $total_memory_kb = $2;
-                }
-            }
-            elsif (/^(Buffers|Cached|SReclaimable):\s+(\d+) kB/) {
-                $caches_kb += $2;
-            }
-        }
-        $used_memory_kb = $total_memory_kb - $free_memory_kb;
+        my %meminfo =
+            map { s/://; $_; }
+            map { (split ' ', $_)[0,1] }
+            @meminfo;
+
+        $caches_kb      += $meminfo{$_} for qw/ Buffers Cached SReclaimable /;
+        $free_memory_kb  = $meminfo{MemFree} + $caches_kb;
+        $total_memory_kb = $meminfo{MemTotal};
+        $used_memory_kb  = $total_memory_kb - $free_memory_kb;
     }
     elsif ( $uname =~ /SunOS/ ) {
         eval "use Sun::Solaris::Kstat";
