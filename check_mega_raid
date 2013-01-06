@@ -1,0 +1,84 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use Config;
+
+use constant {
+    OK       => 0,
+    WARNING  => 1,
+    CRITICAL => 2,
+    UNKNOWN  => 3,
+};
+
+my $megacli = $Config{archname} =~ /i386/ ?
+    '/opt/MegaRAID/MegaCli/MegaCli'
+  : '/opt/MegaRAID/MegaCli/MegaCli64';
+
+unless ( -x $megacli ) {
+    print "$megacli is not executable.";
+    exit UNKNOWN;
+}
+
+my $pd_info = `$megacli -PDList -aALL 2>/dev/null`;
+
+my %pd_status = $pd_info =~ /
+        ^Slot[ ]Number:[ ](\d+)$
+        .*?
+        ^Firmware[ ]state:[ ](.*?)$
+    /imsxg;
+
+%pd_status or do {
+    print "No physical devices found.";
+    exit UNKNOWN;
+};
+
+my $nagios_status = OK;
+for my $status ( values %pd_status ) {
+    if ( $status ne 'Online, Spun Up' ) {
+        $nagios_status = WARNING;
+        if ( $status !~ /(rebuild|S.M.A.R.T Error)/i ) {
+            $nagios_status = CRITICAL;
+            last;
+        }
+    }
+}
+
+print join ' ',
+    sort
+    map { "Slot$_: '$pd_status{$_}'" }
+    keys %pd_status;
+
+exit $nagios_status;
+
+
+__END__
+
+=head1 NAME
+
+check_mega_raid
+
+=head1 SYNOPSIS
+
+/path/to/check_mega_raid
+
+=head1 DESCRIPTION
+
+megaraidのraid状態をチェックするもの。
+Fujistu rx300 でしか動作確認してないです。
+
+physical deviceのstatusをチェックして、Optimalじゃなかったらcritical。
+rebuild中とかsmartのエラーの場合だけはwarningです。
+
+logicalデバイスのstatusはチェックしてません。何故ならphysicalがダメなら
+logicalがダメなのは自明だから(多分)。
+
+アラートが来た後に詳細を調べるのに使えそうなコマンド例。
+
+    MegaCli -PDList -aALL
+    MegaCli -LDInfo -Lall -aALL
+    MegaCli -PdGetMissing -aALL
+    MegaCli -AdpAlILog -aALL
+
+=head1 AUTHOR
+
+Originally by Ryo Kuroda <lamanotrama@gmail.com>
