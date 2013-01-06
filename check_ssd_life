@@ -1,0 +1,142 @@
+#!/bin/sh
+#
+# ## Plugin for Nagios to monitor the ssd life
+# ## Written by Ryo Kuroda
+#
+#
+# ## You are free to use this script under the terms of the Gnu Public License.
+# ## I make no guarantee as to whether this will harm anything, much less work
+# ## - use at your own risk.
+#
+# Usage: ./check_ssd_life
+#
+# ## Description:
+#
+# This plugin uses smartctl command to get the ssd life in percent(SMART ID:233).
+#
+# Exit Codes
+# 0 OK
+# 1 Warning  Exceed the warning-threshold.
+# 2 Critical Exceed the critical-threchold.
+# 3 Unknown  Invalid command line arguments or could not determine used space
+
+
+LANG=C
+PROGNAME=`basename $0`
+VERSION="0.1"
+AUTHOR="Ryo Kuroda <lamanotrama@gmail.com>"
+export PATH=$PATH:/sbin:/usr/sbin/:/usr/local/bin:/usr/local/sbin
+
+# Exit codes
+STATE_OK=0
+STATE_WARNING=1
+STATE_CRITICAL=2
+STATE_UNKNOWN=3
+STATE_DEPENDENT=4
+
+
+# Functions
+print_version() {
+    echo "$PROGNAME $VERSION $AUTHOR"
+}
+
+print_usage() {
+    cat <<EOT
+Usage: $PROGNAME [-wl-c|-d|-V|-h] [device(e.g /dev/sda) [device..]]
+    -w  warning_threshold
+          set warning threshold
+          default 20%
+    -c  critical_threshold
+          set critical_threshold
+          default 10%
+    -h  print the help message and exit
+    -V  print version and exit
+EOT
+}
+
+print_help() {
+    print_version
+    echo ""
+    echo "Plugin for Nagios to check ssd usage"
+    echo ""
+    print_usage
+    echo ""
+}
+
+# Defaults
+WARNING_THRESHOLD="20%"
+CRITICAL_THRESHOLD="10%"
+
+# Get command line options
+while getopts w:c:Vh OPT
+do
+    case $OPT in
+        w)
+            WARNING_THRESHOLD=$OPTARG
+            ;;
+        c)
+            CRITICAL_THRESHOLD=$OPTARG
+            ;;
+        V)
+            print_version
+            exit $STATE_OK
+            ;;
+        h)
+            print_help
+            exit $STATE_OK
+            ;;
+        *)
+            print_usage
+            exit $STATE_UNKNOWN
+            ;;
+    esac
+done
+
+shift `expr $OPTIND - 1`
+
+WARNING_THRESHOLD="${WARNING_THRESHOLD%\%}"
+CRITICAL_THRESHOLD="${CRITICAL_THRESHOLD%\%}"
+
+if [ $# -gt 0 ];then
+    DEVICES="$1"
+else
+    DEVICES=$( awk '$4~/^\wd\w$/{print "/dev/"$4}' /proc/partitions )
+fi
+
+SMARTCTL=$( which smartctl )
+[ -x "$SMARTCTL" ] || {
+  echo "smartctl is not exist."
+  exit $STATE_UNKNOWN
+}
+
+# Main
+exitstatus=''
+INFO=''
+
+for DEV in $DEVICES
+do
+    VAL=$( $SMARTCTL -A $DEV | awk '$1==233{print int($4); exit;}' )
+
+    [ -n "$VAL" ] || continue
+    INFO="${INFO}${DEV}:$VAL%"
+
+    if [ $VAL -lt $CRITICAL_THRESHOLD ];then
+        exitstatus=$STATE_CRITICAL
+        INFO="${INFO}(CRITICAL) "
+    elif [ $VAL -lt $WARNING_THRESHOLD ];then
+        [ "$exitstatus" == $STATE_CRITICAL ] || exitstatus=$STATE_WARNING
+        INFO="${INFO}(WARNING) "
+    else
+        [ -n "$exitstatus" ] || exitstatus=$STATE_OK
+        INFO="${INFO}(OK) "
+    fi
+done
+
+[ -n "$exitstatus" ] || {
+    exitstatus=$STATE_UNKNOWN
+    INFO="SSD is not found."
+}
+
+echo "$INFO"
+exit $exitstatus
+
