@@ -1,0 +1,138 @@
+#!/bin/sh
+#
+# ## Plugin for Nagios to monitor the ip_conntrack
+# ## Written by Ryo Kuroda
+#
+#
+# ## You are free to use this script under the terms of the Gnu Public License.
+# ## I make no guarantee as to whether this will harm anything, much less work
+# ## - use at your own risk.
+#
+#
+# Usage: ./check_ip_conntrack
+#
+# ## Description:
+#
+# This plugin check /proc/sys/net/ipv4/netfilter/ip_conntrack_count
+#
+# Exit Codes
+# 0 OK
+# 1 Warning  Exceed the warning-threshold.
+# 2 Critical Exceed the critical-threchold.
+# 3 Unknown  Invalid command line arguments or could not determine used space
+
+
+LANG=C
+PROGNAME=`basename $0`
+VERSION="0.1"
+AUTHOR="Ryo Kuroda <lamanotrama@gmail.com>"
+export PATH=$PATH:/sbin:/usr/sbin/:/usr/local/bin:/usr/local/sbin
+
+# Exit codes
+STATE_OK=0
+STATE_WARNING=1
+STATE_CRITICAL=2
+STATE_UNKNOWN=3
+STATE_DEPENDENT=4
+
+if [ -f /proc/sys/net/ipv4/netfilter/ip_conntrack_max ]; then
+    COUNT_F=/proc/sys/net/ipv4/netfilter/ip_conntrack_count
+    MAX_F=/proc/sys/net/ipv4/netfilter/ip_conntrack_max
+elif [ -f /proc/sys/net/netfilter/nf_conntrack_max ]; then
+    COUNT_F=/proc/sys/net/netfilter/nf_conntrack_count
+    MAX_F=/proc/sys/net/netfilter/nf_conntrack_max
+else
+    exit $STATE_UNKNOWN
+fi
+
+# Functions
+print_version() {
+    echo "$PROGNAME $VERSION $AUTHOR"
+}
+
+print_usage() {
+    cat <<EOT
+Usage: $PROGNAME [-wl-c|-d|-V|-h]
+    -w  warning_threshold
+          set warning threshold
+          default 70%(used)
+    -c  critical_threshold
+          set critical_threshold
+          default 90%(used)
+    -h  print the help message and exit
+    -V  print version and exit
+EOT
+}
+
+print_help() {
+    print_version
+    echo ""
+    echo "Plugin for Nagios to check ip_conntrack"
+    echo ""
+    print_usage
+    echo ""
+}
+
+# Defaults
+WARNING_THRESHOLD="70%"
+CRITICAL_THRESHOLD="90%"
+
+# Get command line options
+while getopts w:c:Vh OPT
+do
+    case $OPT in
+        w)
+            WARNING_THRESHOLD=$OPTARG
+            ;;
+        c)
+            CRITICAL_THRESHOLD=$OPTARG
+            ;;
+        V)
+            print_version
+            exit $STATE_OK
+            ;;
+        h)
+            print_help
+            exit $STATE_OK
+            ;;
+        *)
+            print_usage
+            exit $STATE_UNKNOWN
+            ;;
+    esac
+done
+
+shift `expr $OPTIND - 1`
+
+WARNING_THRESHOLD="${WARNING_THRESHOLD%\%}"
+CRITICAL_THRESHOLD="${CRITICAL_THRESHOLD%\%}"
+
+# Main
+exitstatus=''
+
+MAX=$( cat $MAX_F 2>&1 )
+COUNT=$( cat $COUNT_F 2>&1 )
+
+[ $? -eq 0 ] || {
+    echo $MAX $COUNT
+    exit $STATE_UNKNOWN
+}
+
+RATIO=$( perl -e "print int($COUNT / $MAX * 100)" )
+
+if [ $RATIO -gt $CRITICAL_THRESHOLD ]; then
+    exitstatus=$STATE_CRITICAL
+    INFO="ip_conntrack CRIT"
+elif [ $RATIO -gt $WARNING_THRESHOLD ]; then
+    exitstatus=$STATE_WARNING
+    INFO="ip_conntrack WARN"
+else
+    exitstatus=$STATE_OK
+    INFO="ip_conntrack OK"
+fi
+
+INFO="$INFO - used ${RATIO}% ($COUNT/$MAX)"
+
+echo "$INFO"
+exit $exitstatus
+
