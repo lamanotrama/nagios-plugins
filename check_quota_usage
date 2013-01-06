@@ -1,0 +1,182 @@
+#!/bin/sh
+#
+# ## Plugin for Nagios to monitor the quota usage
+# ## Written by Ryo Kuroda
+#
+#
+# ## You are free to use this script under the terms of the Gnu Public License.
+# ## I make no guarantee as to whether this will harm anything, much less work
+# ## - use at your own risk.
+#
+#
+# Usage: ./check_quotausage
+#
+# ## Description:
+#
+# This plugin uses repquota command to get the quota values
+#
+# ## Output:
+#
+# The plugin prints "OK" or either "WARN - <quota record>..." or "CRIT - <quota record>..."
+#
+# Exit Codes
+# 0 OK
+# 1 Warning  Exceed the warning-threshold(%)
+# 2 Critical Exceed the hard limit
+# 3 Unknown  Invalid command line arguments or could not determine used space
+
+LANG=C
+PROGNAME=`basename $0`
+VERSION="0.1"
+AUTHOR="Ryo Kuroda <lamanotrama@gmail.com>"
+
+# Exit codes
+STATE_OK=0
+STATE_WARNING=1
+STATE_CRITICAL=2
+STATE_UNKNOWN=3
+STATE_DEPENDENT=4
+
+# Functions
+print_version() {
+    echo "$PROGNAME $VERSION $AUTHOR"
+}
+
+print_usage() {
+    cat <<EOT
+Usage: $PROGNAME [-w warning_threshold|-u|-g|-b|-f|-V|-h] [filesystem]
+    -w  warning_threshold
+          set warning threshold
+          default is 90%
+    -u  check user quota (default)
+    -g  check group quota
+    -b  check block limits (default)
+    -f  check file limits
+    -h  print the help message and exit
+    -V  print version and exit
+EOT
+}
+
+print_help() {
+    print_version
+    echo ""
+    echo "Plugin for Nagios to check quota usage"
+    echo ""
+    print_usage
+    echo ""
+}
+
+# Defaults
+FILE_SYSTEM='-a'
+WARNING_THRESHOLD="90%"
+CHECK_BLOCK=1
+CHECK_FILE=0
+REP_ARGS=""
+
+# Get command line options
+while getopts w:ugbfVh OPT
+do
+    case $OPT in
+        w)
+            WARNING_THRESHOLD=$OPTARG
+            ;;
+        u)
+            REP_ARGS="$REP_ARGS -u"
+            ;;
+        g)
+            REP_ARGS="$REP_ARGS -g"
+            ;;
+        b)
+            CHECK_BLOCK=1
+            ;;
+        f)
+            CHECK_FILE=1
+            CHECK_BLOCK=0
+            ;;
+        V)
+            print_version
+            exit $STATE_OK
+            ;;
+        h)
+            print_help
+            exit $STATE_OK
+            ;;
+        *)
+            print_usage
+            exit $STATE_UNKNOWN
+            ;;
+    esac
+done
+
+shift `expr $OPTIND - 1`
+[ $# -gt 0 ] && FILE_SYSTEM="$1"
+
+REP_ARGS="$REP_ARGS $FILE_SYSTEM"
+WARNING_THRESHOLD="${WARNING_THRESHOLD%\%}"
+
+# Main
+echo "# WARNING THRESHOLD: ${WARNING_THRESHOLD}%"
+
+USED_IDX=""
+HARD_IDX=""
+if [ "$CHECK_BLOCK" = 1 ]; then
+    USED_IDX=3
+    HARD_IDX=5
+elif [ "$CHECK_FILE" = 1 ]; then
+    USED_IDX=6
+    HARD_IDX=8
+fi
+
+REP=`repquota $REP_ARGS`
+[ $? -ne 0 ] && exit $STATE_UNKNOWN
+
+RET=$( echo "$REP" | awk '
+    # skip header
+    $2 !~ /^-|+/ {
+       next
+    }
+
+    # init
+    {
+      used_idx = '$USED_IDX'
+      hard_idx = '$HARD_IDX'
+
+      # incr indexes if exists grace value and check-file mode
+      if ( '$CHECK_FILE' && !match($6, /^[0-9]+$/) ) {
+        used_idx++
+        hard_idx++
+      }
+
+      if ( !$hard_idx ) next
+
+      usage = int( $used_idx / $hard_idx * 100 )
+      record = usage"%  "$0
+    }
+
+    # print CRIT
+    $2 ~ /^+/ && '$CHECK_BLOCK' {
+      print "CRIT -", record
+      next
+    }
+    $2 ~ /+$/ && '$CHECK_FILE' {
+      print "CRIT -", record
+      next
+    }
+
+    # print WARN
+    {
+      if ( usage > '$WARNING_THRESHOLD' ) {
+        print "WARN -", record
+      }
+    }
+
+')
+
+[ $? -ne 0 ] && exit $STATE_UNKNOWN
+
+echo "$RET" | grep '^WARN' && exitstatus=$STATE_WARNING
+echo "$RET" | grep '^CRIT' && exitstatus=$STATE_CRITICAL
+[ -z "$RET" ] && echo "OK"
+
+exit "${exitstatus:=$STATE_OK}"
+
