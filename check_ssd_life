@@ -124,7 +124,7 @@ do
         exitstatus=$STATE_CRITICAL
         INFO="${INFO}(CRITICAL) "
     elif [ $VAL -lt $WARNING_THRESHOLD ];then
-        [ "$exitstatus" == $STATE_CRITICAL ] || exitstatus=$STATE_WARNING
+        [ "$exitstatus" = "$STATE_CRITICAL" ] || exitstatus=$STATE_WARNING
         INFO="${INFO}(WARNING) "
     else
         [ -n "$exitstatus" ] || exitstatus=$STATE_OK
